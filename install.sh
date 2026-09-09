@@ -23,7 +23,17 @@ if [[ "${1:-}" == "--uninstall" ]]; then
   exit 0
 fi
 
-[[ -d "$APP" ]] || { echo "Build it first: ./build.sh"; exit 1; }
+# One entry point: certificate, build, launch agent. Each step is idempotent, so running
+# this again after a code change is the normal way to update.
+if ! security find-identity -p codesigning 2>/dev/null | grep "Uberkey Self-Signed" >/dev/null; then
+  echo "==> Creating the signing identity (once)"
+  ./make-cert.sh
+fi
+
+echo "==> Building"
+./build.sh
+
+[[ -d "$APP" ]] || { echo "Build failed; not installing." >&2; exit 1; }
 mkdir -p "$AGENTS"
 
 # The remap used to be its own RunAtLoad agent. The app now applies it on launch, on wake
@@ -51,8 +61,27 @@ cat > "$AGENTS/$APP_ID.plist" <<PLIST
 </plist>
 PLIST
 
+# bootout is asynchronous: bootstrapping before it completes fails with
+# "Bootstrap failed: 5: Input/output error" and leaves the job loaded but not running.
+# Wait for the job to actually go away first.
 launchctl bootout "gui/$UID/$APP_ID" 2>/dev/null || true
+for _ in $(seq 1 50); do
+  launchctl print "gui/$UID/$APP_ID" >/dev/null 2>&1 || break
+  sleep 0.1
+done
 launchctl bootstrap "gui/$UID" "$AGENTS/$APP_ID.plist"
+launchctl kickstart "gui/$UID/$APP_ID" 2>/dev/null || true
 
-echo "Installed. Caps Lock is now the Uber key (⌃⌥⌘); quick tap sends Escape."
-echo "Status: ~/Library/Application Support/Uberkey/status"
+cat <<'DONE'
+
+==> Installed. Caps Lock is now the Uber key (⌃⌥⌘).
+
+One thing left, and it needs you: grant Accessibility access.
+  System Settings > Privacy & Security > Accessibility > turn on Uberkey
+
+The menu bar icon carries a warning badge until then. Uberkey notices the grant on its
+own within about 15 seconds — no restart needed.
+
+  Check it:     ~/Applications/Uberkey.app/Contents/MacOS/Uberkey --doctor
+  Uninstall:    ./install.sh --uninstall
+DONE

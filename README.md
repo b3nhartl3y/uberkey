@@ -5,9 +5,14 @@ reimplementation of [hyperkey.app](https://hyperkey.app/): one 500-line Swift fi
 Homebrew, no Karabiner, no DriverKit.
 
 ```bash
-./make-cert.sh                  # once: signing identity so grants survive rebuilds
-./build.sh && ./install.sh
+git clone https://github.com/b3nhartl3y/uberkey.git
+cd uberkey
+./install.sh
 ```
+
+That is the whole install: it creates the signing identity on first run, builds the app
+into `~/Applications/Uberkey.app`, and starts it at login. Run it again any time to update
+— every step is idempotent.
 
 Then grant **System Settings › Privacy & Security › Accessibility → Uberkey**. The menu
 bar icon carries a warning badge until access is granted; the app then picks it up on its
@@ -104,9 +109,9 @@ exactly like a chord randomly failing to fire.
 | | |
 |---|---|
 | `Uberkey.swift` | the whole app |
-| `build.sh` | compiles, signs, and restarts the launch agent |
-| `install.sh` | login agent; `--uninstall` to remove |
-| `make-cert.sh` | run-once signing identity |
+| `install.sh` | the entry point: identity, build, login agent; `--uninstall` to remove |
+| `build.sh` | compiles, signs, registers the icon, restarts the launch agent |
+| `make-cert.sh` | run-once signing identity, called by `install.sh` |
 | `make-icon.swift` | renders `Uberkey.icns` from an SF Symbol |
 
 ## State it keeps

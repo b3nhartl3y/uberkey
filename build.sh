@@ -70,6 +70,11 @@ else
   echo "Built $APP  (ad-hoc: re-grant Accessibility. Run ./make-cert.sh to stop this.)"
 fi
 
+# The bundle is replaced on every build, so nudge LaunchServices or Finder can keep showing
+# a stale icon (or none at all) for the new one.
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f "$APP" >/dev/null 2>&1 || true
+
 # Pick up the new binary if the launch agent is installed.
 if launchctl print "gui/$UID/$BUNDLE_ID" >/dev/null 2>&1; then
   launchctl kickstart -k "gui/$UID/$BUNDLE_ID"
