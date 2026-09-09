@@ -217,9 +217,18 @@ That bumps `VERSION`, builds the DMG and zip, tags, pushes, and creates the rele
 notes taken from the commits since the last tag. It refuses to run from a dirty tree or
 off `main`, so a release is always reproducible from its own tag.
 
-Anyone who downloaded a previous copy replaces the app and reopens it. **Their
-Accessibility grant carries over**, because every release is signed with the same
-certificate — that is the same property that stops local rebuilds from voiding it.
+Downloaded copies **update themselves**. They check GitHub once a day and install a newer
+release without being asked; the menu bar has *Check for updates* and an *Update
+automatically* switch. The Accessibility grant carries over, because every release is
+signed with the same certificate, so macOS still sees the same app.
+
+The check that makes this safe: an update is only installed if the downloaded app carries
+the **same designated requirement** as the running copy — same bundle identifier, same
+signing certificate. Anything else is rejected and logged. Without that check, an app that
+replaces its own binary from the internet is a remote code execution hole.
+
+Copies installed from source are left alone, since replacing them with a released build
+would discard local changes. `--doctor` says which kind you have.
 
 ## Uninstall
 
