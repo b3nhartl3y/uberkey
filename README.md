@@ -16,6 +16,9 @@ Homebrew, no Karabiner, no DriverKit.
    › Privacy & Security**, scroll to the bottom, and click **Open Anyway**.
 4. Grant **Accessibility** access when asked.
 
+Nothing visible happens when it opens — no window, no Dock icon. Uberkey lives in the
+menu bar, so look for the caps-lock icon up there. That is it working, not failing.
+
 It adds itself as a login item, so it starts with your Mac from then on. There is no
 installer to run and nothing else to configure.
 
