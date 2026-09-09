@@ -8,8 +8,8 @@ Homebrew, no Karabiner, no DriverKit.
 
 **Download it** — [latest release](https://github.com/b3nhartl3y/uberkey/releases/latest):
 
-1. Download `Uberkey.zip` and unzip it.
-2. Drag **Uberkey.app** to your Applications folder.
+1. Download `Uberkey.dmg` and open it.
+2. Drag **Uberkey** into the Applications folder, as the window shows.
 3. **Right-click it and choose Open** — not a double-click, the first time. Uberkey is not
    notarised, so macOS refuses a plain double-click and offers no way past it. Right-click
    → Open gives you the "open anyway" button. If it still refuses, go to **System Settings
@@ -33,6 +33,8 @@ cd uberkey
 
 That creates a signing identity on first run, builds into `~/Applications/Uberkey.app`,
 and starts it at login. Re-run it to update — every step is idempotent.
+
+`Uberkey.zip` is also on the release if you would rather not mount a disk image.
 
 ### Why the scary warning
 
@@ -139,6 +141,8 @@ exactly like a chord randomly failing to fire.
 | `build.sh` | compiles, signs, registers the icon, restarts the launch agent |
 | `make-cert.sh` | run-once signing identity, called by `install.sh` |
 | `make-icon.swift` | renders `Uberkey.icns` from an SF Symbol |
+| `make-dmg.sh` | packages the DMG, background image and all |
+| `make-zip.sh` | packages a plain zip |
 
 ## State it keeps
 
