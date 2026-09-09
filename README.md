@@ -1,5 +1,12 @@
 # Uberkey
 
+### [⬇ Download Uberkey.dmg](https://github.com/b3nhartl3y/uberkey/releases/latest/download/Uberkey.dmg)
+
+Open it, drag Uberkey into Applications, then **right-click Uberkey and choose Open** the
+first time. [Why right-click?](#why-the-scary-warning)
+
+---
+
 Caps Lock becomes the Uber key — one key standing in for ⌃⌥⌘. A native, dependency-free
 reimplementation of [hyperkey.app](https://hyperkey.app/): one 500-line Swift file, no
 Homebrew, no Karabiner, no DriverKit.
