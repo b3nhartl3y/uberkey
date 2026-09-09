@@ -186,7 +186,8 @@ it is not.
 ```
 
 Prints the bundle, whether an instance holds the lock, tap state, key mapping, the modifier
-set, every setting, launch agent state, and the signature. Exits non-zero with a list of
+set, every setting, launch agent state, and the signature. `--check-updates` reports what
+the updater sees without installing anything. Exits non-zero with a list of
 problems if anything is wrong, so it works as a check and not just a readout. This is the
 first thing to run if the key ever stops working — every debugging session on this app so
 far began by assembling the same facts by hand.
@@ -217,9 +218,10 @@ That bumps `VERSION`, builds the DMG and zip, tags, pushes, and creates the rele
 notes taken from the commits since the last tag. It refuses to run from a dirty tree or
 off `main`, so a release is always reproducible from its own tag.
 
-Downloaded copies **update themselves**. They check GitHub once a day and install a newer
-release without being asked; the menu bar has *Check for updates* and an *Update
-automatically* switch. The Accessibility grant carries over, because every release is
+The menu bar has **Update now**, which checks GitHub and installs a newer version if there
+is one, with the result shown underneath it. **Update automatically** is a switch, and it
+is **off by default** — an app that replaces itself and relaunches without being asked is
+a surprise, so it is opt-in. Turned on, it checks once a day. The Accessibility grant carries over, because every release is
 signed with the same certificate, so macOS still sees the same app.
 
 The check that makes this safe: an update is only installed if the downloaded app carries

@@ -615,11 +615,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         header(menu, "Updates")
-        if let newVersion = Updater.availableVersion {
-            add(menu, "Install update \(newVersion)…", #selector(installUpdate))
-        } else {
-            add(menu, "Check for updates", #selector(checkForUpdates))
-        }
+        let now = add(menu, Updater.availableVersion.map { "Update now — \($0) available" }
+                              ?? "Update now", #selector(updateNow))
+        now.toolTip = "Checks GitHub and installs a newer version if there is one."
+        let status = NSMenuItem(title: "  \(Updater.lastResult)", action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        menu.addItem(status)
         let auto = add(menu, "Update automatically", #selector(toggleAutoUpdate))
         auto.state = Updater.automatic ? .on : .off
         auto.isEnabled = !Updater.managedBySource
@@ -690,21 +691,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMenu()
     }
 
-    @objc private func checkForUpdates() {
-        Updater.check(userAsked: true)
+    /// One action: look, and install if there is something newer.
+    @objc private func updateNow() {
+        Updater.check(userAsked: true, thenInstall: true)
+        buildMenu()
     }
 
     @objc private func toggleAutoUpdate() {
         Updater.automatic.toggle()
         buildMenu()
-    }
-
-    @objc private func installUpdate() {
-        guard let version = Updater.availableVersion,
-              let url = URL(string:
-                "https://github.com/\(Updater.repo)/releases/latest/download/Uberkey.zip")
-        else { return }
-        Updater.install(from: url, version: version)
     }
 
     @objc private func toggleRemap() {
@@ -1219,8 +1214,10 @@ final class WindowCycler {
 enum Updater {
     static let repo = "b3nhartl3y/uberkey"
 
+    /// Off by default. Replacing the app and relaunching it without being asked is a
+    /// surprise, so it is opt-in; "Update now" is always available either way.
     static var automatic: Bool {
-        get { UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true }
+        get { UserDefaults.standard.bool(forKey: "autoUpdate") }
         set { UserDefaults.standard.set(newValue, forKey: "autoUpdate") }
     }
 
@@ -1229,7 +1226,7 @@ enum Updater {
     }
 
     private(set) static var availableVersion: String?
-    private(set) static var lastResult = "not checked"
+    private(set) static var lastResult = "not checked yet"
     static var onStateChange: (() -> Void)?
 
     /// Numeric compare, so 1.10 beats 1.9. Pure, and asserted in --selftest.
@@ -1249,7 +1246,7 @@ enum Updater {
             .appendingPathComponent("Library/LaunchAgents/agency.honcho.uberkey.plist").path)
     }
 
-    static func check(userAsked: Bool) {
+    static func check(userAsked: Bool, thenInstall: Bool = false) {
         if managedBySource, !userAsked {
             lastResult = "managed by install.sh"
             return
@@ -1286,8 +1283,12 @@ enum Updater {
                 lastResult = "\(version) available"
                 log("update: \(lastResult)")
                 onStateChange?()
-                if automatic, !managedBySource, let zip, let zipURL = URL(string: zip) {
+                let shouldInstall = (thenInstall || automatic) && !managedBySource
+                if shouldInstall, let zip, let zipURL = URL(string: zip) {
                     install(from: zipURL, version: version)
+                } else if thenInstall, managedBySource {
+                    lastResult = "\(version) available — this copy is managed by install.sh"
+                    onStateChange?()
                 }
             }
         }.resume()
@@ -1472,6 +1473,20 @@ func doctor() -> Never {
 
 if CommandLine.arguments.contains("--doctor") {
     doctor()
+}
+
+// Checks GitHub and reports, without installing anything. Lets the update path be tested
+// without waiting a day or clicking a menu.
+if CommandLine.arguments.contains("--check-updates") {
+    Updater.check(userAsked: true)
+    // The completion hops to the main queue, so the run loop has to be serviced for it to
+    // arrive at all — there is no NSApplication in this mode.
+    let deadline = Date().addingTimeInterval(20)
+    while Updater.lastResult.hasPrefix("not checked"), Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+    }
+    print("installed \(Updater.currentVersion) — \(Updater.lastResult)")
+    exit(Updater.availableVersion == nil ? 0 : 10)
 }
 
 if CommandLine.arguments.contains("--selftest") {
