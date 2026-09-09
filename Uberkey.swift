@@ -444,6 +444,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchForSleepAndLock()
         watchForTermination()
         ensureLoginItem()
+
+        Updater.onStateChange = { [weak self] in self?.buildMenu() }
+        Updater.check(userAsked: false)
+        // Once a day is plenty for a utility like this, and stays well inside GitHub's
+        // unauthenticated rate limit.
+        Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { _ in
+            Updater.check(userAsked: false)
+        }
         WindowCycler.shared.start()
 
         Remap.apply()
@@ -606,6 +614,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        header(menu, "Updates")
+        if let newVersion = Updater.availableVersion {
+            add(menu, "Install update \(newVersion)…", #selector(installUpdate))
+        } else {
+            add(menu, "Check for updates", #selector(checkForUpdates))
+        }
+        let auto = add(menu, "Update automatically", #selector(toggleAutoUpdate))
+        auto.state = Updater.automatic ? .on : .off
+        auto.isEnabled = !Updater.managedBySource
+        if Updater.managedBySource {
+            auto.toolTip = "This copy was built by install.sh; update it with git pull && ./install.sh"
+        }
+
+        menu.addItem(.separator())
         header(menu, "Hold Uber and sweep the mouse")
         let win = add(menu, "Sideways: switch windows", #selector(toggleWindowSweep))
         win.state = WindowCycler.windowSweepEnabled ? .on : .off
@@ -668,6 +690,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMenu()
     }
 
+    @objc private func checkForUpdates() {
+        Updater.check(userAsked: true)
+    }
+
+    @objc private func toggleAutoUpdate() {
+        Updater.automatic.toggle()
+        buildMenu()
+    }
+
+    @objc private func installUpdate() {
+        guard let version = Updater.availableVersion,
+              let url = URL(string:
+                "https://github.com/\(Updater.repo)/releases/latest/download/Uberkey.zip")
+        else { return }
+        Updater.install(from: url, version: version)
+    }
+
     @objc private func toggleRemap() {
         Remap.enabled.toggle()
         buildMenu()
@@ -715,6 +754,13 @@ func selfTest() {
     // 1835008 = control+option+command, the value Hyperkey uses and therefore the value
     // existing launcher hotkeys are bound to. Adding shift silently breaks every one.
     assert(kDefaultHyperFlags.rawValue == 1835008, "default hyper flags must match Hyperkey's")
+
+    // Version comparison decides whether an update installs itself, so it is worth pinning.
+    assert(Updater.isNewer("1.1", than: "1.0"))
+    assert(Updater.isNewer("1.10", than: "1.9"), "compare numerically, not as text")
+    assert(Updater.isNewer("1.0.1", than: "1.0"))
+    assert(!Updater.isNewer("1.0", than: "1.0"), "same version is not an update")
+    assert(!Updater.isNewer("0.9", than: "1.0"), "must never install an older build")
     assert(shouldFireQuickTap(usedAsModifier: false, heldFor: 0.05))
     assert(!shouldFireQuickTap(usedAsModifier: true, heldFor: 0.05), "hyper+key must never send the quick-tap key")
     assert(!shouldFireQuickTap(usedAsModifier: true, heldFor: 0.0))
@@ -1157,6 +1203,178 @@ final class WindowCycler {
     }
 }
 
+
+// MARK: - Updates
+
+/// Checks GitHub for a newer release and installs it.
+///
+/// The safety of this rests on one check: the downloaded copy must carry the *same*
+/// designated requirement as the running copy — same bundle identifier, same signing
+/// certificate. Without that, a self-updating app is a remote code execution hole. It also
+/// means the user's Accessibility grant carries across the update, because as far as macOS
+/// is concerned it is still the same app.
+///
+/// Deliberately does nothing when a launch agent exists: that copy was built from source
+/// by install.sh, and replacing it with a released build would throw away local changes.
+enum Updater {
+    static let repo = "b3nhartl3y/uberkey"
+
+    static var automatic: Bool {
+        get { UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "autoUpdate") }
+    }
+
+    static var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+    }
+
+    private(set) static var availableVersion: String?
+    private(set) static var lastResult = "not checked"
+    static var onStateChange: (() -> Void)?
+
+    /// Numeric compare, so 1.10 beats 1.9. Pure, and asserted in --selftest.
+    static func isNewer(_ candidate: String, than current: String) -> Bool {
+        let a = candidate.split(separator: ".").map { Int($0) ?? 0 }
+        let b = current.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(a.count, b.count) {
+            let l = i < a.count ? a[i] : 0
+            let r = i < b.count ? b[i] : 0
+            if l != r { return l > r }
+        }
+        return false
+    }
+
+    static var managedBySource: Bool {
+        FileManager.default.fileExists(atPath: FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/agency.honcho.uberkey.plist").path)
+    }
+
+    static func check(userAsked: Bool) {
+        if managedBySource, !userAsked {
+            lastResult = "managed by install.sh"
+            return
+        }
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else { return }
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 15
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let tag = json["tag_name"] as? String else {
+                DispatchQueue.main.async {
+                    lastResult = "check failed: \(error?.localizedDescription ?? "bad response")"
+                    log("update: \(lastResult)")
+                    onStateChange?()
+                }
+                return
+            }
+            let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+            let zip = (json["assets"] as? [[String: Any]])?
+                .first { ($0["name"] as? String) == "Uberkey.zip" }?["browser_download_url"] as? String
+
+            DispatchQueue.main.async {
+                guard isNewer(version, than: currentVersion) else {
+                    availableVersion = nil
+                    lastResult = "up to date (\(currentVersion))"
+                    log("update: \(lastResult)")
+                    onStateChange?()
+                    return
+                }
+                availableVersion = version
+                lastResult = "\(version) available"
+                log("update: \(lastResult)")
+                onStateChange?()
+                if automatic, !managedBySource, let zip, let zipURL = URL(string: zip) {
+                    install(from: zipURL, version: version)
+                }
+            }
+        }.resume()
+    }
+
+    static func install(from zipURL: URL, version: String) {
+        log("update: downloading \(version)")
+        URLSession.shared.downloadTask(with: zipURL) { temp, _, error in
+            guard let temp else {
+                DispatchQueue.main.async {
+                    lastResult = "download failed: \(error?.localizedDescription ?? "unknown")"
+                    log("update: \(lastResult)")
+                    onStateChange?()
+                }
+                return
+            }
+            let work = FileManager.default.temporaryDirectory
+                .appendingPathComponent("uberkey-update-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: work) }
+            try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+            let zip = work.appendingPathComponent("Uberkey.zip")
+            try? FileManager.default.moveItem(at: temp, to: zip)
+
+            // ditto, not unzip: it restores the signature and resource forks intact.
+            _ = shell("/usr/bin/ditto", ["-x", "-k", zip.path, work.path])
+            let candidate = work.appendingPathComponent("Uberkey.app")
+
+            let verdict = verify(candidate)
+            DispatchQueue.main.async {
+                guard verdict == nil else {
+                    lastResult = "update rejected: \(verdict!)"
+                    log("update: \(lastResult)")
+                    onStateChange?()
+                    return
+                }
+                swapIn(candidate, version: version)
+            }
+        }.resume()
+    }
+
+    /// Returns nil when the candidate is safe to install, or the reason it is not.
+    private static func verify(_ candidate: URL) -> String? {
+        guard FileManager.default.fileExists(atPath: candidate.path) else { return "no app in the zip" }
+
+        let intact = shell("/usr/bin/codesign", ["--verify", "--deep", "--strict", candidate.path])
+        guard !intact.lowercased().contains("invalid"), !intact.lowercased().contains("not signed")
+        else { return "signature does not verify" }
+
+        func requirement(_ path: String) -> String {
+            shell("/usr/bin/codesign", ["-d", "--requirements", "-", path])
+                .split(separator: "\n").first { $0.contains("designated =>") }
+                .map(String.init) ?? ""
+        }
+        let ours = requirement(Bundle.main.bundlePath)
+        let theirs = requirement(candidate.path)
+        guard !ours.isEmpty else { return "cannot read our own requirement" }
+        guard ours == theirs else { return "signed by someone else" }
+        return nil
+    }
+
+    private static func swapIn(_ candidate: URL, version: String) {
+        let live = URL(fileURLWithPath: Bundle.main.bundlePath)
+        let backup = live.deletingLastPathComponent()
+            .appendingPathComponent("Uberkey.app.old-\(currentVersion)")
+        try? FileManager.default.removeItem(at: backup)
+        do {
+            try FileManager.default.moveItem(at: live, to: backup)
+            try FileManager.default.moveItem(at: candidate, to: live)
+        } catch {
+            // Put it back rather than leave nothing installed.
+            try? FileManager.default.moveItem(at: backup, to: live)
+            lastResult = "install failed: \(error.localizedDescription)"
+            log("update: \(lastResult)")
+            onStateChange?()
+            return
+        }
+        try? FileManager.default.removeItem(at: backup)
+        log("update: installed \(version), relaunching")
+
+        // Relaunch through open, then exit non-zero so a launchd-managed copy is restarted
+        // too. Whichever starts first takes the lock; the other exits.
+        _ = shell("/usr/bin/open", ["-n", live.path])
+        HyperModifiers.release()
+        exit(1)
+    }
+}
+
 // MARK: - Diagnostics
 
 /// Runs a command and returns its trimmed output. stderr is merged in, because both
@@ -1218,6 +1436,9 @@ func doctor() -> Never {
     row("quick tap", quick.label)
     row("remap", Remap.enabled ? "on" : "off")
     row("logging", UserDefaults.standard.bool(forKey: "log") ? "on" : "off")
+    row("updates", Updater.managedBySource
+        ? "managed by install.sh (git pull && ./install.sh)"
+        : (Updater.automatic ? "automatic" : "manual"))
 
     let uid = String(getuid())
     let agent = shell("/bin/launchctl", ["print", "gui/\(uid)/agency.honcho.uberkey"])
