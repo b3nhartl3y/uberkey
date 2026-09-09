@@ -232,6 +232,33 @@ replaces its own binary from the internet is a remote code execution hole.
 Copies installed from source are left alone, since replacing them with a released build
 would discard local changes. `--doctor` says which kind you have.
 
+## What it does with your data
+
+Uberkey asks for Accessibility access, which is the most invasive permission macOS grants.
+The reasonable first question is whether it is a keylogger. It is not, and every claim here
+is checkable in `Uberkey.swift` — it is one file.
+
+- **Keystrokes are never recorded.** Nothing in the source writes the identity of a key you
+  press. The event tap needs to see every key in order to add ⌃⌥⌘ to the next one, and it
+  discards them immediately.
+- **Two network requests exist, both to GitHub, both about updates**: the releases API to
+  ask what the latest version is, and the release asset to download it. There is no
+  telemetry, no analytics, and nothing is sent anywhere. Turn off *Update automatically*
+  and it never contacts anything unless you click *Update now*.
+- **The diagnostic log is off by default, and it does record window titles.** That is the
+  one thing worth knowing: entries look like `cycle: recorded Slack — Steven (DM)`, so
+  titles can include document names, message subjects and the like. It exists because it is
+  what made the hard bugs findable. It stays in
+  `~/Library/Application Support/Uberkey/log` on your Mac, is never uploaded, and is
+  deleted by `./install.sh --uninstall`. Turn it off when you are done with it.
+- **Window titles are read while it runs**, via Accessibility, so the sweep can tell two
+  Chrome windows apart. They are held in memory and only ever written to disk if you switch
+  the log on.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). No warranty; the licence text says so in the usual capitals.
+
 ## Uninstall
 
 ```bash
