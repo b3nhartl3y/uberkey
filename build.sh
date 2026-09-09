@@ -39,14 +39,31 @@ swiftc -O -o "$APP/Contents/MacOS/Uberkey" \
   -framework Cocoa -framework IOKit \
   Uberkey.swift
 
-if security find-identity -v -p codesigning | grep -q "$IDENTITY"; then
-  # Stable certificate: the designated requirement pins the bundle id and cert rather than
-  # the cdhash, so the Accessibility grant survives this rebuild. Nothing to reset.
-  codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP"
+# NEVER pipe into `grep -q` here. With `set -o pipefail` the early exit of grep -q closes
+# the pipe, the producer takes SIGPIPE, and the pipeline reports failure even on a match.
+# It is a race, so it works most times — and when it lost, this fell through to the ad-hoc
+# branch below and ran tccutil reset, silently destroying a working Accessibility grant.
+# Capture into a variable and match on the string instead.
+signing_output=$(codesign --force --sign "$IDENTITY" --identifier "$BUNDLE_ID" "$APP" 2>&1) \
+  && signed=yes || signed=no
+identities=$(security find-identity -p codesigning 2>/dev/null || true)
+
+if [[ "$signed" == yes ]]; then
+  actual=$(codesign -dvv "$APP" 2>&1 || true)
+  if [[ "$actual" != *"Authority=$IDENTITY"* ]]; then
+    echo "ERROR: signed, but not by \"$IDENTITY\". Refusing to continue." >&2
+    exit 1
+  fi
   echo "Built $APP  (signed by \"$IDENTITY\" — Accessibility grant preserved)"
+elif [[ "$identities" == *"$IDENTITY"* ]]; then
+  echo "ERROR: signing failed: $signing_output" >&2
+  echo "\"$IDENTITY\" exists, so this is not a missing identity. A locked login keychain" >&2
+  echo "is the usual cause. Refusing to fall back to ad-hoc, because that would reset your" >&2
+  echo "Accessibility grant." >&2
+  exit 1
 else
-  # Ad-hoc fallback: the signature changes every build, which silently voids the grant
-  # while leaving the checkbox on. Reset it so the app asks again cleanly instead.
+  # No identity at all. Ad-hoc signing changes the signature every build, which voids the
+  # grant while leaving the checkbox on, so clear it to make the failure honest.
   codesign --force --sign - --identifier "$BUNDLE_ID" "$APP" >/dev/null 2>&1 || true
   pkill -f "$APP" 2>/dev/null || true          # tccutil only works with the app stopped
   tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true

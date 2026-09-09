@@ -47,6 +47,8 @@ against the flags on a key event.
 - **Uber Key: On / Off** — pause the tap without uninstalling
 - **Quick tap sends** — Escape / Caps Lock / Nothing
 - **Uber key sends** — Control / Option / Shift / Command, individually
+- **Sideways: switch windows** — the mouse sweep described below
+- **Reverse sweep direction** — if left and right come out the wrong way round
 - **Remap Caps Lock to Uber Key** — off hands Caps Lock back to macOS as a normal Caps Lock,
   which also means no hyper key until you switch it on again
 - **Quit Uberkey** — clears the remap on the way out, so Caps Lock is never left dead
@@ -67,6 +69,35 @@ Three things guard against the failure modes that make a keyboard tool feel brok
 - **Modifiers are dropped on sleep, screen lock, and fast user switch**, because a key-up
   never arrives if the Mac sleeps mid-hold.
 - **A 10-second watchdog** releases them if a key-up is missed for any other reason.
+
+## Cycling windows with the mouse
+
+Hold the Uber key and **sweep sideways** to move through the windows you have recently been
+in. Each sweep moves one window and brings it straight to the front — no overlay, nothing
+to confirm. Sweep back the other way to return.
+
+Why it exists: macOS has no equivalent. Cmd-Tab switches *apps* and Cmd-` cycles within
+*one* app, but nothing walks recently-used windows across apps — so two Chrome windows and
+a Figma file are three separate destinations here, each with its own title.
+
+Details that matter in use:
+
+- **A history of 5**, most recent first, seeded from the windows already open at launch so
+  it is never empty after a restart.
+- **One sweep, one window** — however far you sweep. An earlier version accumulated raw
+  distance, which fired 23 raises in 9 seconds and strobed across the whole list.
+  Reversing re-arms instantly; continuing the same way needs a brief pause.
+- **Scroll and pointer movement both count.** On a trackpad or Magic Mouse a swipe is
+  fingers on the surface, which is a scroll and moves the pointer barely a pixel.
+- **Ordinary windows only.** Permission prompts, onboarding panels and sheets were getting
+  in and eating slots, so entries are filtered on the window's AX subrole rather than by a
+  list of process names.
+- **Vertical is ignored on purpose**, so normal scrolling triggers nothing — and macOS
+  already switches Spaces on a horizontal swipe of its own, which needs no help from us.
+
+No Accessibility call happens on the event tap's thread. macOS switches off a tap that
+responds too slowly, and while it is off keystrokes pass through unmodified — which looks
+exactly like a chord randomly failing to fire.
 
 ## Files
 
