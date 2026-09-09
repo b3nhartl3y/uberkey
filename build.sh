@@ -5,6 +5,8 @@ set -euo pipefail
 APP="${1:-$HOME/Applications/Uberkey.app}"
 BUNDLE_ID="agency.honcho.uberkey"
 IDENTITY="Uberkey Self-Signed"
+# Single source of truth, so the bundle, --doctor and the git tag cannot disagree.
+VERSION="$(cat "$(dirname "$0")/VERSION" 2>/dev/null || echo 0.0)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -25,8 +27,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>agency.honcho.uberkey</string>
   <key>CFBundleExecutable</key><string>Uberkey</string>
   <key>CFBundleIconFile</key><string>Uberkey</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>

@@ -150,6 +150,8 @@ exactly like a chord randomly failing to fire.
 | `make-icon.swift` | renders `Uberkey.icns` from an SF Symbol |
 | `make-dmg.sh` | packages the DMG, background image and all |
 | `make-zip.sh` | packages a plain zip |
+| `release.sh` | bumps `VERSION`, builds, tags, publishes the GitHub release |
+| `VERSION` | the only place the version number lives |
 
 ## State it keeps
 
@@ -196,6 +198,28 @@ swiftc -Onone -o /tmp/uberkey Uberkey.swift -framework Cocoa -framework IOKit &&
 ```
 
 Covers the quick-tap decision and locks the default modifier set to `1835008`.
+
+## Updating
+
+Your own machine:
+
+```bash
+git pull && ./install.sh
+```
+
+Publishing a new version:
+
+```bash
+./release.sh 1.1
+```
+
+That bumps `VERSION`, builds the DMG and zip, tags, pushes, and creates the release with
+notes taken from the commits since the last tag. It refuses to run from a dirty tree or
+off `main`, so a release is always reproducible from its own tag.
+
+Anyone who downloaded a previous copy replaces the app and reopens it. **Their
+Accessibility grant carries over**, because every release is signed with the same
+certificate — that is the same property that stops local rebuilds from voiding it.
 
 ## Uninstall
 
