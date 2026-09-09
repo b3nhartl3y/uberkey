@@ -9,7 +9,8 @@ STAGE="dist/stage"
 DMG="dist/Uberkey.dmg"
 W=660; H=420
 
-rm -rf dist
+# Only our own outputs: wiping all of dist would delete a zip built alongside this.
+rm -rf "$STAGE" "$APP" "$DMG" dist/rw.dmg
 mkdir -p "$STAGE/.background"
 ./build.sh "$PWD/$APP"
 cp -R "$APP" "$STAGE/"

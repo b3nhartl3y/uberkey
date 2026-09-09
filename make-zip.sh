@@ -6,8 +6,9 @@ set -euo pipefail
 APP="dist/Uberkey.app"
 ZIP="dist/Uberkey.zip"
 
-rm -rf dist
+# Only our own outputs: wiping all of dist would delete a DMG built alongside this.
 mkdir -p dist
+rm -rf "$APP" "$ZIP"
 ./build.sh "$PWD/$APP"
 
 # ditto, not zip: it preserves the code signature and resource forks. A plain `zip` can

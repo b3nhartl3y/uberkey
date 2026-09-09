@@ -13,10 +13,17 @@ NEW="$1"
 git rev-parse "v$NEW" >/dev/null 2>&1 && { echo "tag v$NEW already exists" >&2; exit 1; }
 
 PREV="$(cat VERSION)"
-echo "==> $PREV -> $NEW"
-echo "$NEW" > VERSION
-git add VERSION
-git commit -q -m "Version $NEW"
+if [[ "$PREV" == "$NEW" ]]; then
+  # Resumable: a previous run may have committed the bump and then failed later.
+  echo "==> VERSION already $NEW, continuing"
+  PREV="$(git tag --list 'v*' --sort=-v:refname | head -1 | sed 's/^v//')"
+  PREV="${PREV:-$NEW}"
+else
+  echo "==> $PREV -> $NEW"
+  echo "$NEW" > VERSION
+  git add VERSION
+  git commit -q -m "Version $NEW"
+fi
 
 echo "==> Building packages"
 ./make-dmg.sh >/dev/null
