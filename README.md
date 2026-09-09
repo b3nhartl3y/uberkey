@@ -4,15 +4,38 @@ Caps Lock becomes the Uber key — one key standing in for ⌃⌥⌘. A native, 
 reimplementation of [hyperkey.app](https://hyperkey.app/): one 500-line Swift file, no
 Homebrew, no Karabiner, no DriverKit.
 
+## Install
+
+**Download it** — [latest release](https://github.com/b3nhartl3y/uberkey/releases/latest):
+
+1. Download `Uberkey.zip` and unzip it.
+2. Drag **Uberkey.app** to your Applications folder.
+3. **Right-click it and choose Open** — not a double-click, the first time. Uberkey is not
+   notarised, so macOS refuses a plain double-click and offers no way past it. Right-click
+   → Open gives you the "open anyway" button. If it still refuses, go to **System Settings
+   › Privacy & Security**, scroll to the bottom, and click **Open Anyway**.
+4. Grant **Accessibility** access when asked.
+
+It adds itself as a login item, so it starts with your Mac from then on. There is no
+installer to run and nothing else to configure.
+
+**Or build from source**, which skips the Gatekeeper warning entirely because the app is
+then signed on your own machine:
+
 ```bash
 git clone https://github.com/b3nhartl3y/uberkey.git
 cd uberkey
 ./install.sh
 ```
 
-That is the whole install: it creates the signing identity on first run, builds the app
-into `~/Applications/Uberkey.app`, and starts it at login. Run it again any time to update
-— every step is idempotent.
+That creates a signing identity on first run, builds into `~/Applications/Uberkey.app`,
+and starts it at login. Re-run it to update — every step is idempotent.
+
+### Why the scary warning
+
+Getting rid of it needs an Apple Developer account at $99/year plus notarisation, for a
+free single-file utility. Building from source avoids it, because a locally signed app is
+never quarantined.
 
 Then grant **System Settings › Privacy & Security › Accessibility → Uberkey**. The menu
 bar icon carries a warning badge until access is granted; the app then picks it up on its

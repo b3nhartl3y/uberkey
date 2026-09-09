@@ -16,6 +16,7 @@
 
 import Cocoa
 import ApplicationServices
+import ServiceManagement
 import IOKit
 import IOKit.hid
 import IOKit.hidsystem
@@ -442,6 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buildMenu()
         watchForSleepAndLock()
         watchForTermination()
+        ensureLoginItem()
         WindowCycler.shared.start()
 
         Remap.apply()
@@ -506,6 +508,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             symbol = Uberkey.shared.held ? "capslock.fill" : "capslock"
         }
         item.button?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Uberkey")
+    }
+
+    /// Downloaded copies have no launch agent — nobody ran install.sh — so register as a
+    /// login item on first run. Installed-from-source copies are started by launchd and
+    /// skip this, so the two never both start a copy. (The flock would stop them anyway.)
+    private func ensureLoginItem() {
+        let agent = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/agency.honcho.uberkey.plist")
+        guard !FileManager.default.fileExists(atPath: agent.path) else { return }
+        guard SMAppService.mainApp.status != .enabled else { return }
+        do {
+            try SMAppService.mainApp.register()
+            log("registered as a login item")
+        } catch {
+            log("could not register as a login item: \(error.localizedDescription)")
+        }
     }
 
     /// A signal-based kill bypasses applicationWillTerminate, so the modifiers would be
