@@ -255,6 +255,7 @@ final class Uberkey {
     private var usedAsModifier = false
     private var mouseSamples = 0
     private var loggedStampThisHold = false
+    private var watchdog: DispatchWorkItem?
 
 
     func start() -> Bool {
@@ -299,13 +300,20 @@ final class Uberkey {
     /// If the key-up is ever missed the modifiers would stay stuck down, which makes the
     /// whole machine feel broken. Release them unconditionally after a plausible hold.
     private func armStuckModifierWatchdog() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [self] in
-            if held {
-                log("stuck modifier watchdog fired")
-                held = false
-                HyperModifiers.release()
-            }
+        // Cancel the previous one first. Without this, pressing the key again within ten
+        // seconds — which is constant in normal use — let a stale watchdog fire *during*
+        // the new hold and tear the modifiers out mid-chord. The next key then landed with
+        // no modifiers, so Uber+W arrived as a bare ⌘W and closed the window.
+        watchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, held else { return }
+            log("stuck modifier watchdog fired")
+            held = false
+            HyperModifiers.release()
+            onHeldChange?(false)
         }
+        watchdog = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -383,6 +391,8 @@ final class Uberkey {
                 }
             } else {
                 held = false
+                watchdog?.cancel()
+                watchdog = nil
                 HyperModifiers.release()     // before any synthesised key, not after
                 onHeldChange?(false)
                 WindowCycler.shared.endHold()
@@ -725,20 +735,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 /// enabled it appends to ~/Library/Application Support/Uberkey/log, and records only the
 /// hyper key's own events — never the identity of any other key pressed, which would make
 /// this a keylogger. Read per call so it can be toggled without a restart.
+/// Writes on a background queue, never on the caller's thread.
+///
+/// This used to do the file I/O inline. Called from the event tap that meant disk writes
+/// inside the tap callback — measured at 812ms, and macOS switches off a tap that slow,
+/// after which keystrokes pass through unmodified. The diagnostic was causing the fault it
+/// existed to find.
+private let logQueue = DispatchQueue(label: "agency.honcho.uberkey.log", qos: .utility)
+private let logStamp: ISO8601DateFormatter = {
+    // Building a formatter per call is not free either, and this one is never reconfigured.
+    ISO8601DateFormatter()
+}()
+
 func log(_ msg: @autoclosure () -> String) {
     // @autoclosure matters: several call sites interpolate an Accessibility call, and Swift
     // evaluates arguments eagerly. Without this, `record()` made an AX round trip on every
     // app switch even with logging off — on the same thread as the event tap.
     guard UserDefaults.standard.bool(forKey: "log") else { return }
-    let dir = supportDir()
-    let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg())\n"
-    let url = dir.appendingPathComponent("log")
-    if let h = try? FileHandle(forWritingTo: url) {
-        h.seekToEndOfFile()
-        h.write(Data(line.utf8))
-        try? h.close()
-    } else {
-        try? line.write(to: url, atomically: true, encoding: .utf8)
+    let line = "\(logStamp.string(from: Date())) \(msg())\n"
+    logQueue.async {
+        let url = supportDir().appendingPathComponent("log")
+        if let h = try? FileHandle(forWritingTo: url) {
+            h.seekToEndOfFile()
+            h.write(Data(line.utf8))
+            try? h.close()
+        } else {
+            try? line.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 }
 
